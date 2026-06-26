@@ -78,7 +78,60 @@ docker compose up --build
 The image runs `python manage.py migrate` on start, then serves with gunicorn on
 port `8000`. The SQLite database lives on the named volume `queuestorm-data`.
 
+### Neon (or any managed Postgres)
+
+Set `DATABASE_URL` in your environment to any `postgresql://…` connection
+string — Neon, Railway Postgres, Render, Supabase, etc. — and the app will
+pick it up automatically. SSL query params (`sslmode=require`,
+`channel_binding=require`) are forwarded to psycopg.
+
+```bash
+# .env (gitignored)
+DATABASE_URL=postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/dbname?sslmode=require&channel_binding=require
+```
+
+```bash
+python manage.py migrate
+python manage.py runserver 0.0.0.0:8000
+```
+
+The same `DATABASE_URL` works on Railway, Render, Fly.io, etc. — set it as a
+service variable in the platform's dashboard.
+
 ### Railway
+
+The repo ships a `railway.json` and a `Procfile`, both pointing at the same
+Dockerfile entrypoint. Deploy in three clicks:
+
+1. Push this repo to GitHub.
+2. On Railway → **New Project → Deploy from GitHub Repo** → select it.
+3. (Optional) Add a **Postgres** plugin if you want durable tickets. If you
+   skip it, SQLite is used (data persists across restarts in the container's
+   ephemeral filesystem, but is wiped on full redeploy — fine for the hackathon
+   since the judge harness hits the API directly and each ticket is self-contained
+   by `ticket_id`).
+
+**Required env vars** (set them in the Railway service's *Variables* tab):
+
+| Variable      | Notes                                                     |
+| ------------- | --------------------------------------------------------- |
+| `SECRET_KEY`  | Required. Generate with `python3 -c "import secrets; print(secrets.token_urlsafe(50))"` |
+| `PORT`        | Set automatically by Railway. Do not override.            |
+| `ALLOWED_HOSTS` | Defaults to `*`; tighten for production. `*.up.railway.app` is auto-added. |
+| `DEBUG`       | Leave unset in production (defaults to `False` on Railway). |
+
+**Optional env vars**:
+
+| Variable             | Notes                                                |
+| -------------------- | ---------------------------------------------------- |
+| `DATABASE_URL`       | Set automatically when you add the Postgres plugin. |
+| `DJANGO_SQLITE_PATH` | Path to the SQLite file. Defaults to `/app/data/db.sqlite3`. |
+
+The container is reachable at `https://<your-service>.up.railway.app/health`
+within ~15 seconds of boot. Submit tickets at
+`POST https://<your-service>.up.railway.app/analyze-ticket`.
+
+
 
 The repo ships a `railway.json` and a `Procfile`, both pointing at the same
 Dockerfile entrypoint. Deploy in three clicks:

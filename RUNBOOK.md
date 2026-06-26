@@ -262,23 +262,42 @@ The command reads each `input`, calls `engine.analyzer.analyze()` directly
 
 ## 5. Inspecting data
 
-SQLite lives at `db.sqlite3` locally or at `/app/data/db.sqlite3` in the
-container (mounted on the `queuestorm-data` volume).
+Storage depends on `DATABASE_URL`:
 
-### 5.1 From the host
+- **SQLite** (default) — at `db.sqlite3` locally or at
+  `/app/data/db.sqlite3` in the container (mounted on the `queuestorm-data`
+  volume).
+- **Postgres** (when `DATABASE_URL` is set, e.g. Neon, Railway Postgres,
+  Render, Supabase) — connect with any psql client.
+
+### 5.1 SQLite — from the host
 
 ```bash
 sqlite3 db.sqlite3 ".tables"
-sqlite3 db.sqlite3 "SELECT id, ticket_id, case_type, severity, department FROM core_ticket ORDER BY id DESC LIMIT 10;"
+sqlite3 db.sqlite3 "SELECT id, ticket_id FROM core_ticket ORDER BY id DESC LIMIT 10;"
 ```
 
-### 5.2 From the container
+### 5.2 Postgres — from the host
+
+```bash
+# psql
+psql "$DATABASE_URL" -c "\dt"
+psql "$DATABASE_URL" -c "SELECT id, ticket_id FROM core_ticket ORDER BY id DESC LIMIT 10;"
+
+# Django shell
+DJANGO_SETTINGS_MODULE=config.settings python manage.py shell -c "
+from core.models import Ticket
+print(Ticket.objects.count())
+"
+```
+
+### 5.3 From the container
 
 ```bash
 docker compose exec web python manage.py dbshell
 ```
 
-### 5.3 Via the Django admin
+### 5.4 Via the Django admin
 
 ```bash
 python manage.py createsuperuser   # local
