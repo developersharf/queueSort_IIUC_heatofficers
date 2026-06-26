@@ -17,3 +17,9 @@ node_modules/
 .idea/
 .vscode/
 .DS_Store
+
+# Deployment manifests are fine to ship in the image (they're small and
+# referenced by some PaaS detection logic), but if you don't want them in
+# the image, uncomment the lines below.
+# !railway.json
+# !Procfile
