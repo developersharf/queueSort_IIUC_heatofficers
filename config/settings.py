@@ -111,7 +111,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # ---------------------------------------------------------------------------
 #
 # Priority:
-#   1. DATABASE_URL (Railway Postgres plugin sets this automatically)
+#   1. DATABASE_URL (Neon / Railway / Render / Supabase all set this)
 #   2. DJANGO_SQLITE_PATH  (file path override, useful for Docker volumes)
 #   3. SQLite at BASE_DIR/db.sqlite3 (local dev default)
 #
@@ -120,11 +120,29 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # preferred, no large deps).
 
 def _parse_database_url(url: str) -> dict:
-    from urllib.parse import urlparse
+    """
+    Parse a libpq-style DATABASE_URL into a Django DATABASES['default'] entry.
+
+    Supports:
+      - scheme: postgres:// or postgresql://  → django.db.backends.postgresql
+                sqlite3://                      → django.db.backends.sqlite3
+      - query params:
+            sslmode=<disable|allow|prefer|require|verify-ca|verify-full>
+            channel_binding=<require|disable>
+            options=<libpq runtime options>
+        All forwarded into OPTIONS so psycopg/psycopg2 applies them.
+    """
+    from urllib.parse import urlparse, parse_qs
+
     parsed = urlparse(url)
-    engine = 'django.db.backends.' + (parsed.scheme or 'sqlite3')
+
+    scheme = (parsed.scheme or 'sqlite3').lower()
+    # Normalise postgresql+psycopg / postgresql+psycopg2 schemes too.
+    engine_scheme = scheme.split('+')[0]
+    engine = 'django.db.backends.' + engine_scheme
     name = (parsed.path or '/').lstrip('/') or 'db.sqlite3'
-    cfg = {'ENGINE': engine, 'NAME': name}
+
+    cfg: dict = {'ENGINE': engine, 'NAME': name}
     if parsed.hostname:
         cfg['HOST'] = parsed.hostname
     if parsed.port:
@@ -133,6 +151,25 @@ def _parse_database_url(url: str) -> dict:
         cfg['USER'] = parsed.username
     if parsed.password:
         cfg['PASSWORD'] = parsed.password
+
+    # Forward any URL query parameters into the engine's OPTIONS dict.
+    # sslmode and channel_binding are required by Neon (and similar managed
+    # Postgres services) — without them psycopg refuses to connect.
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    options: dict = {}
+    for key in ('sslmode', 'sslrootcert', 'sslcert', 'sslkey',
+                'channel_binding', 'options', 'application_name'):
+        values = query.pop(key, None)
+        if values:
+            # Take the first value; libpq query strings repeat rarely.
+            options[key] = values[0]
+    if options:
+        cfg['OPTIONS'] = options
+
+    # Neon (and other managed Postgres services) recommend a short connect
+    # timeout so a hung DB doesn't wedge the request thread.
+    cfg.setdefault('CONN_MAX_AGE', 60)
+
     return cfg
 
 

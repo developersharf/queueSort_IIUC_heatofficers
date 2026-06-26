@@ -4,3 +4,7 @@ django-cors-headers>=4.3
 python-dotenv>=1.0
 gunicorn>=22.0
 whitenoise>=6.6
+# PostgreSQL driver (used when DATABASE_URL points at Postgres —
+# e.g. Neon, Railway Postgres, Render Postgres, Supabase).
+# `psycopg[binary]` ships its own libpq so no system-level build deps needed.
+psycopg[binary]>=3.1

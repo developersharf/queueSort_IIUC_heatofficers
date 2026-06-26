@@ -78,6 +78,39 @@ docker compose up --build
 The image runs `python manage.py migrate` on start, then serves with gunicorn on
 port `8000`. The SQLite database lives on the named volume `queuestorm-data`.
 
+### Railway
+
+The repo ships a `railway.json` and a `Procfile`, both pointing at the same
+Dockerfile entrypoint. Deploy in three clicks:
+
+1. Push this repo to GitHub.
+2. On Railway → **New Project → Deploy from GitHub Repo** → select it.
+3. (Optional) Add a **Postgres** plugin if you want durable tickets. If you
+   skip it, SQLite is used (data persists across restarts in the container's
+   ephemeral filesystem, but is wiped on full redeploy — fine for the hackathon
+   since the judge harness hits the API directly and each ticket is self-contained
+   by `ticket_id`).
+
+**Required env vars** (set them in the Railway service's *Variables* tab):
+
+| Variable      | Notes                                                     |
+| ------------- | --------------------------------------------------------- |
+| `SECRET_KEY`  | Required. Generate with `python3 -c "import secrets; print(secrets.token_urlsafe(50))"` |
+| `PORT`        | Set automatically by Railway. Do not override.            |
+| `ALLOWED_HOSTS` | Defaults to `*`; tighten for production. `*.up.railway.app` is auto-added. |
+| `DEBUG`       | Leave unset in production (defaults to `False` on Railway). |
+
+**Optional env vars**:
+
+| Variable             | Notes                                                |
+| -------------------- | ---------------------------------------------------- |
+| `DATABASE_URL`       | Set automatically when you add the Postgres plugin. |
+| `DJANGO_SQLITE_PATH` | Path to the SQLite file. Defaults to `/app/data/db.sqlite3`. |
+
+The container is reachable at `https://<your-service>.up.railway.app/health`
+within ~15 seconds of boot. Submit tickets at
+`POST https://<your-service>.up.railway.app/analyze-ticket`.
+
 ### Environment variables
 
 | Variable              | Required      | Default                  | Notes                                 |

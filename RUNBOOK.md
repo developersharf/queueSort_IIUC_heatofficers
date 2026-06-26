@@ -161,10 +161,72 @@ docker compose down -v
 The judge harness expects a public URL. Easiest options:
 
 - **Hosted platform** (Railway, Render, Fly.io) — push the repo, set env vars,
-  expose the service port.
+  expose the service port. See **§3.5 Railway** below.
 - **Local + tunnel** — run the container, then expose it with `cloudflared`,
   `ngrok http 8000`, or `tailscale serve`. The Dockerfile already binds
   `0.0.0.0:8000` so a tunnel can reach it.
+
+### 3.5 Railway
+
+The repo ships a `railway.json` and a `Procfile`; Railway uses either
+automatically. The Dockerfile is the source of truth for both.
+
+**Deploy steps**
+
+1. Push the repo to GitHub (or GitLab/Bitbucket — Railway imports all three).
+2. On Railway → **New Project → Deploy from GitHub Repo**, select the repo.
+3. Wait for the first build to finish (~2–3 min for a clean image).
+4. Generate a domain under **Settings → Networking → Generate Domain**.
+   You will get `https://<name>.up.railway.app`.
+
+**Required env vars** (set in *Variables*):
+
+| Variable      | Example                                                          |
+| ------------- | ---------------------------------------------------------------- |
+| `SECRET_KEY`  | Output of `python3 -c "import secrets; print(secrets.token_urlsafe(50))"` |
+| `PORT`        | Leave unset; Railway sets it automatically.                      |
+| `ALLOWED_HOSTS` | Leave unset (`*`); Railway injects `*.up.railway.app` itself.  |
+| `DEBUG`       | Leave unset; defaults to `False` on Railway.                    |
+
+**Verifying the deploy**
+
+```bash
+# From your laptop
+curl https://<name>.up.railway.app/health
+# {"status": "ok"}
+
+curl -X POST https://<name>.up.railway.app/analyze-ticket \
+  -H "Content-Type: application/json" \
+  -d @sample_cases_smoke.json | python -m json.tool
+```
+
+**Logs**
+
+Railway → *Service* → *Logs* tab shows the gunicorn stream live. If a deploy
+fails, the build log is under *Deployments* → click the failed build.
+
+**Persistence**
+
+Railway's filesystem is **ephemeral**: any data written to disk is lost on
+redeploy. Two options:
+
+1. **Accept it.** Tickets you submitted earlier won't be there after a
+   redeploy, but the API still works for new requests. For a 4-hour hackathon
+   this is fine — the judge harness hits the API directly, and the SQLite
+   engine is recreated by `migrate` on boot.
+2. **Add Postgres.** Click **+ New → Database → Postgres** in your Railway
+   project. Railway auto-sets `DATABASE_URL`, and `config/settings.py`
+   detects it and switches the engine.
+
+**Troubleshooting Railway**
+
+| Symptom                                       | Fix                                                     |
+| --------------------------------------------- | ------------------------------------------------------- |
+| Build fails on `pip install`                  | Check the build log; usually a transient network issue. Click *Retry*. |
+| 502 Bad Gateway on first request              | The container is still running `migrate`. Wait 15 s and retry. |
+| `DisallowedHost at /`                         | Set `ALLOWED_HOSTS` to `*` or to your Railway domain.  |
+| Static files (Django admin CSS) are 404       | `collectstatic` failed. Check the deploy log for the error. |
+| Healthcheck stays red                         | `curl /health` from your laptop; if that works, restart the service. |
 
 ---
 
